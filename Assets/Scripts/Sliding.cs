@@ -59,7 +59,7 @@ public class Sliding : MonoBehaviour
         Vector3 inputDirection = orientation.forward * verticalInput + orientation.right * horizontalInput;
 
         //sliding normal
-        if (!pm.OnSlope() || rb.velocity.y > -0.1f)
+        if (!pm.OnSlope() || rb.linearVelocity.y > -0.1f)
         {
             isGrounded = Physics.CheckSphere(groundCheck.position, groundDistance, groundMask);
 

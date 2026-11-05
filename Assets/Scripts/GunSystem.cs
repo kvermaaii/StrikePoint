@@ -5,16 +5,51 @@ using TMPro;
 using Random = UnityEngine.Random;
 using UnityEngine.Audio;
 
+/// <summary>
+/// Tactical FPS Weapon System.
+/// Handles raycast hitscan ballistics, spread calculation, dynamic recoil,
+/// multiple fire modes (Semi/Burst/Auto), ammo tracking, and procedural hitmarkers.
+/// Supports both inanimate targets and reactive EnemyAI combatants.
+/// </summary>
 public class GunSystem : MonoBehaviour
 {
+    public enum FireMode
+    {
+        FullAuto,
+        Burst,
+        SemiAuto
+    }
 
-    public float fireRate = 0.25f;                                      // Number in seconds which controls how often the player can fire
-    public float weaponRange = 20f;                                     // Distance in Unity units over which the player can fire
+    [Header("Firing Mode Configuration")]
+    public FireMode currentFireMode = FireMode.FullAuto;
+    public KeyCode switchModeKey = KeyCode.B;
 
+    [Header("Weapon Timing & Ballistics")]
+    public float fireRate = 0.25f;
+    public float weaponRange = 100f;
+    public int damage = 25;
+    public float timeBetweenShooting = 0.1f;
+    public float spread = 0.02f;
+    public float range = 100f;
+    public float reloadTime = 1.5f;
+    public float timeBetweenShots = 0.05f;
+
+    [Header("Ammunition")]
+    public int magazineSize = 30;
+    public int bulletsPerTap = 1;
+    public bool allowButtonHold = true;
+    private int bulletsLeft;
+    private int bulletsShot;
+
+    [Header("Gun References")]
     public Transform gunEnd;
     public ParticleSystem muzzleFlash;
     public ParticleSystem cartridgeEjection;
+    public Camera fpsCam;
+    public RaycastHit rayHit;
+    public LayerMask whatIsEnemy;
 
+    [Header("Impact VFX Decals")]
     public GameObject metalHitEffect;
     public GameObject sandHitEffect;
     public GameObject stoneHitEffect;
@@ -23,40 +58,30 @@ public class GunSystem : MonoBehaviour
     public GameObject[] fleshHitEffects;
     public GameObject woodHitEffect;
 
-    private float nextFire;                                             // Float to store the time the player will be allowed to fire again, after firing
-    private Animator anim;
-    private GunAim gunAim;
-
-
-    [SerializeField]
-    private TrailRenderer BulletTrail;
-
+    [Header("Bullet Trail & Audio")]
+    [SerializeField] private TrailRenderer BulletTrail;
     public AudioMixer audioMixer;
     public AudioClip shootingSound;
     public AudioClip hitSound;
     public AudioClip reloadingSound;
 
-    //Gun stats
-    public int damage;
-    public float timeBetweenShooting, spread, range, reloadTime, timeBetweenShots;
-    public int magazineSize, bulletsPerTap;
-    public bool allowButtonHold;
-    int bulletsLeft, bulletsShot;
-
-    //bools 
-    bool shooting, readyToShoot, reloading;
-
-    //Reference
-    public Camera fpsCam;
-    //public Transform attackPoint;
-    public RaycastHit rayHit;
-    public LayerMask whatIsEnemy;
-
-    //Graphics
-    //public ParticleSystem muzzleFlash, bulletHoleGraphic;
+    [Header("Camera & UI")]
     public CameraShake camShake;
-    public float camShakeMagnitude, camShakeDuration;
+    public float camShakeMagnitude = 0.1f;
+    public float camShakeDuration = 0.1f;
     public TextMeshProUGUI text;
+
+    // Internal State
+    private bool shooting;
+    private bool readyToShoot;
+    private bool reloading;
+    private Animator anim;
+    private GunAim gunAim;
+
+    // Procedural Hitmarker State
+    private float hitmarkerTimer = 0f;
+    private const float HITMARKER_DURATION = 0.12f;
+    private static Texture2D lineTexture;
 
     private void Awake()
     {
@@ -66,118 +91,231 @@ public class GunSystem : MonoBehaviour
         anim = GetComponent<Animator>();
         gunAim = GetComponentInParent<GunAim>();
     }
+
     private void Update()
     {
         if (Time.timeScale == 0f) return;
 
         MyInput();
 
-        //SetText
-        text.text = bulletsLeft + " / " + magazineSize;
+        // Switch firing mode with key
+        if (Input.GetKeyDown(switchModeKey))
+        {
+            CycleFireMode();
+        }
 
+        // Update HUD text
+        UpdateHUD();
     }
+
+    private void CycleFireMode()
+    {
+        if (currentFireMode == FireMode.FullAuto)
+        {
+            currentFireMode = FireMode.Burst;
+            allowButtonHold = false;
+        }
+        else if (currentFireMode == FireMode.Burst)
+        {
+            currentFireMode = FireMode.SemiAuto;
+            allowButtonHold = false;
+        }
+        else
+        {
+            currentFireMode = FireMode.FullAuto;
+            allowButtonHold = true;
+        }
+    }
+
+    private void UpdateHUD()
+    {
+        if (text == null) return;
+
+        string modeLabel = currentFireMode switch
+        {
+            FireMode.FullAuto => "AUTO",
+            FireMode.Burst => "BURST",
+            FireMode.SemiAuto => "SEMI",
+            _ => "AUTO"
+        };
+
+        if (reloading)
+        {
+            text.text = $"RELOADING... [{modeLabel}]";
+        }
+        else
+        {
+            text.text = $"{bulletsLeft} / {magazineSize} [{modeLabel}]";
+        }
+    }
+
     private void MyInput()
     {
-        if (allowButtonHold) shooting = Input.GetKey(KeyCode.Mouse0);
-        else shooting = Input.GetKeyDown(KeyCode.Mouse0);
-
-        if (Input.GetKeyDown(KeyCode.R) && bulletsLeft < magazineSize && !reloading) Reload();
-
-        //Shoot
-        if (readyToShoot && shooting && !reloading && bulletsLeft > 0)// && !gunAim.GetIsOutOfBounds())
+        if (currentFireMode == FireMode.FullAuto)
         {
-            bulletsShot = bulletsPerTap;
+            shooting = Input.GetKey(KeyCode.Mouse0);
+        }
+        else
+        {
+            shooting = Input.GetKeyDown(KeyCode.Mouse0);
+        }
+
+        // Reload command
+        if (Input.GetKeyDown(KeyCode.R) && bulletsLeft < magazineSize && !reloading)
+        {
+            Reload();
+        }
+
+        // Shoot trigger
+        if (readyToShoot && shooting && !reloading && bulletsLeft > 0)
+        {
+            bulletsShot = (currentFireMode == FireMode.Burst) ? Mathf.Min(3, bulletsLeft) : bulletsPerTap;
             Shoot();
         }
     }
+
     private void Shoot()
     {
         readyToShoot = false;
 
-        AudioSource.PlayClipAtPoint(shootingSound, transform.position, AudioManager.Instance.GetSfxVolumeLevel());
+        // Register shot with GameManager
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.RegisterShotFired();
+        }
 
-        //Spread
+        // Audio
+        if (shootingSound != null)
+        {
+            float sfxVol = AudioManager.Instance != null ? AudioManager.Instance.GetSfxVolumeLevel() : 1f;
+            AudioSource.PlayClipAtPoint(shootingSound, transform.position, sfxVol);
+        }
+
+        // Ballistic spread calculation
         float x = Random.Range(-spread, spread);
         float y = Random.Range(-spread, spread);
         float z = Random.Range(-spread, spread);
-
-        //Calculate Direction with Spread
         Vector3 direction = fpsCam.transform.forward + new Vector3(x, y, z);
 
-        //RayCast
-        if (Physics.Raycast(fpsCam.transform.position, direction, out rayHit, range, whatIsEnemy))
+        // Hitscan raycast (QueryTriggerInteraction.Collide ensures trigger targets are hit)
+        if (Physics.Raycast(fpsCam.transform.position, direction, out rayHit, range, whatIsEnemy, QueryTriggerInteraction.Collide))
         {
-            
             HandleHit(rayHit);
 
-            /*if (rayHit.collider.CompareTag("Enemy"))
-                rayHit.collider.GetComponent<ShootingAi>().TakeDamage(damage);*/
-
-            TrailRenderer trail = Instantiate(BulletTrail, gunEnd.position, Quaternion.identity);
-            StartCoroutine(SpawnTrail(trail, rayHit));
+            if (BulletTrail != null && gunEnd != null)
+            {
+                TrailRenderer trail = Instantiate(BulletTrail, gunEnd.position, Quaternion.identity);
+                StartCoroutine(SpawnTrail(trail, rayHit.point));
+            }
+        }
+        else
+        {
+            // If ray didn't hit an obstacle, cast bullet trail to max distance
+            if (BulletTrail != null && gunEnd != null)
+            {
+                TrailRenderer trail = Instantiate(BulletTrail, gunEnd.position, Quaternion.identity);
+                StartCoroutine(SpawnTrail(trail, fpsCam.transform.position + direction * range));
+            }
         }
 
-        //ShakeCamera
-        StartCoroutine(camShake.Shake(camShakeDuration, camShakeMagnitude));
-
-        //Graphics
-        //Instantiate(bulletHoleGraphic, rayHit.point, Quaternion.Euler(0, 180, 0));
-        //Instantiate(muzzleFlash, attackPoint.position, Quaternion.identity);
-
-        muzzleFlash.Play();
-        cartridgeEjection.Play();
-        anim.SetTrigger("Fire");
-
-        /*Vector3 rayOrigin = gunEnd.position;
-        RaycastHit hit;
-        if (Physics.Raycast(rayOrigin, gunEnd.forward, out hit, weaponRange))
+        // Camera recoil
+        if (camShake != null)
         {
-            HandleHit(hit);
-        }*/
+            StartCoroutine(camShake.Shake(camShakeDuration, camShakeMagnitude));
+        }
+
+        // Visual effects
+        if (muzzleFlash != null) muzzleFlash.Play();
+        if (cartridgeEjection != null) cartridgeEjection.Play();
+        if (anim != null) anim.SetTrigger("Fire");
 
         bulletsLeft--;
         bulletsShot--;
 
-        Invoke("ResetShot", timeBetweenShooting);
+        Invoke(nameof(ResetShot), timeBetweenShooting);
 
         if (bulletsShot > 0 && bulletsLeft > 0)
-            Invoke("Shoot", timeBetweenShots);
+        {
+            Invoke(nameof(Shoot), timeBetweenShots);
+        }
     }
+
     private void ResetShot()
     {
         readyToShoot = true;
     }
+
     private void Reload()
     {
         reloading = true;
-        AudioSource.PlayClipAtPoint(reloadingSound, transform.position, AudioManager.Instance.GetSfxVolumeLevel());
-        Invoke("ReloadFinished", reloadTime);
+        if (reloadingSound != null)
+        {
+            float sfxVol = AudioManager.Instance != null ? AudioManager.Instance.GetSfxVolumeLevel() : 1f;
+            AudioSource.PlayClipAtPoint(reloadingSound, transform.position, sfxVol);
+        }
+        Invoke(nameof(ReloadFinished), reloadTime);
     }
+
     private void ReloadFinished()
     {
         bulletsLeft = magazineSize;
         reloading = false;
     }
 
-
-    void HandleHit(RaycastHit hit)
+    private void HandleHit(RaycastHit hit)
     {
+        bool hitValidTarget = false;
+
+
+        // 2. Check for modular Target component
+        Target targetComp = hit.collider.GetComponentInParent<Target>();
+        if (targetComp != null)
+        {
+            targetComp.TakeDamage(damage, hit.point, hit.normal);
+            hitValidTarget = true;
+        }
+        // 3. Fallback to existing Target layer (layer 12)
+        else if (hit.collider.gameObject.layer == 12)
+        {
+            hit.collider.gameObject.SetActive(false);
+            if (GameManager.Instance != null)
+            {
+                GameManager.Instance.TargetHit();
+            }
+            hitValidTarget = true;
+        }
+
+        // 4. Check for Explosive Prop
+        ExplosiveProp prop = hit.collider.GetComponentInParent<ExplosiveProp>();
+        if (prop != null)
+        {
+            prop.TakeDamage(damage);
+            hitValidTarget = true;
+        }
+
+        if (hitValidTarget)
+        {
+            TriggerHitmarker();
+            if (GameManager.Instance != null)
+            {
+                GameManager.Instance.RegisterShotHit();
+            }
+        }
+
+        // 5. Material-based impact decals & flesh effects
         if (hit.collider.sharedMaterial != null)
         {
             string materialName = hit.collider.sharedMaterial.name;
 
-            // Hitting the target
-            if (hit.collider.gameObject.layer == 12)
-            {
-                hit.collider.gameObject.SetActive(false);
-                GameManager.Instance.TargetHit();
-            }
-            
             switch (materialName)
             {
                 case "Metal":
                     SpawnDecal(hit, metalHitEffect);
-                    AudioSource.PlayClipAtPoint(hitSound, transform.position, AudioManager.Instance.GetSfxVolumeLevel());
+                    if (hitSound != null)
+                    {
+                        float sfxVol = AudioManager.Instance != null ? AudioManager.Instance.GetSfxVolumeLevel() : 1f;
+                        AudioSource.PlayClipAtPoint(hitSound, transform.position, sfxVol);
+                    }
                     break;
                 case "Sand":
                     SpawnDecal(hit, sandHitEffect);
@@ -193,10 +331,9 @@ public class GunSystem : MonoBehaviour
                     SpawnDecal(hit, woodHitEffect);
                     break;
                 case "Meat":
-                    SpawnDecal(hit, fleshHitEffects[Random.Range(0, fleshHitEffects.Length)]);
-                    break;
                 case "Character":
-                    SpawnDecal(hit, fleshHitEffects[Random.Range(0, fleshHitEffects.Length)]);
+                    if (fleshHitEffects != null && fleshHitEffects.Length > 0)
+                        SpawnDecal(hit, fleshHitEffects[Random.Range(0, fleshHitEffects.Length)]);
                     break;
                 case "WaterFilledExtinguish":
                     SpawnDecal(hit, waterLeakExtinguishEffect);
@@ -205,32 +342,89 @@ public class GunSystem : MonoBehaviour
                 default:
                     SpawnDecal(hit, metalHitEffect);
                     break;
-
             }
+        }
+        else
+        {
+            SpawnDecal(hit, metalHitEffect);
         }
     }
 
-    void SpawnDecal(RaycastHit hit, GameObject prefab)
+    private void SpawnDecal(RaycastHit hit, GameObject prefab)
     {
-        GameObject spawnedDecal = GameObject.Instantiate(prefab, hit.point, Quaternion.LookRotation(hit.normal));
+        if (prefab == null) return;
+        GameObject spawnedDecal = Instantiate(prefab, hit.point, Quaternion.LookRotation(hit.normal));
         spawnedDecal.transform.SetParent(hit.collider.transform);
     }
 
+    public void TriggerHitmarker()
+    {
+        hitmarkerTimer = HITMARKER_DURATION;
+        if (hitSound != null)
+        {
+            float sfxVol = AudioManager.Instance != null ? AudioManager.Instance.GetSfxVolumeLevel() : 1f;
+            AudioSource.PlayClipAtPoint(hitSound, transform.position, sfxVol);
+        }
+    }
 
-    private IEnumerator SpawnTrail(TrailRenderer Trail, RaycastHit Hit)
+    private void OnGUI()
+    {
+        if (hitmarkerTimer > 0f)
+        {
+            hitmarkerTimer -= Time.deltaTime;
+            DrawHitmarker();
+        }
+    }
+
+    private void DrawHitmarker()
+    {
+        float x = Screen.width / 2f;
+        float y = Screen.height / 2f;
+        float size = 8f;
+        float gap = 4f;
+
+        Color prevColor = GUI.color;
+        GUI.color = Color.white;
+
+        // Draw 4 diagonal cross ticks:
+        DrawLine(new Vector2(x - gap, y - gap), new Vector2(x - gap - size, y - gap - size), 2);
+        DrawLine(new Vector2(x + gap, y - gap), new Vector2(x + gap + size, y - gap - size), 2);
+        DrawLine(new Vector2(x - gap, y + gap), new Vector2(x - gap - size, y + gap + size), 2);
+        DrawLine(new Vector2(x + gap, y + gap), new Vector2(x + gap + size, y + gap + size), 2);
+
+        GUI.color = prevColor;
+    }
+
+    private static void DrawLine(Vector2 pointA, Vector2 pointB, float width)
+    {
+        if (lineTexture == null)
+        {
+            lineTexture = new Texture2D(1, 1);
+            lineTexture.SetPixel(0, 0, Color.white);
+            lineTexture.Apply();
+        }
+
+        Matrix4x4 matrix = GUI.matrix;
+        float angle = Mathf.Rad2Deg * Mathf.Atan2(pointB.y - pointA.y, pointB.x - pointA.x);
+        float length = (pointB - pointA).magnitude;
+
+        GUIUtility.RotateAroundPivot(angle, pointA);
+        GUI.DrawTexture(new Rect(pointA.x, pointA.y - width / 2f, length, width), lineTexture);
+        GUI.matrix = matrix;
+    }
+
+    private IEnumerator SpawnTrail(TrailRenderer trail, Vector3 hitPoint)
     {
         float time = 0;
-        Vector3 startPosition = Trail.transform.position;
-        
+        Vector3 startPosition = trail.transform.position;
+
         while (time < 1)
         {
-            Trail.transform.position = Vector3.Lerp(startPosition, Hit.point, time);
-            time += Time.deltaTime / Trail.time;
-
+            trail.transform.position = Vector3.Lerp(startPosition, hitPoint, time);
+            time += Time.deltaTime / trail.time;
             yield return null;
         }
 
-        Destroy(Trail.gameObject, Trail.time);
+        Destroy(trail.gameObject, trail.time);
     }
-
 }

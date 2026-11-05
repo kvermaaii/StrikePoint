@@ -58,16 +58,10 @@ public class PlayerMovement : MonoBehaviour
 
     public bool OnSlope()
     {
-        if (Physics.Raycast(transform.position, Vector3.down, out slopeHit, playerHeight / 2 + 0.5f))
+        if (Physics.Raycast(transform.position, Vector3.down, out slopeHit, playerHeight / 2 + 0.5f, groundMask))
         {
-            if(slopeHit.normal != Vector3.up)
-            {
-                return true;
-            }
-            else
-            {
-                return false;
-            }
+            float angle = Vector3.Angle(Vector3.up, slopeHit.normal);
+            return angle > 0.05f && angle <= 55f;
         }
         return false;
     }
@@ -99,6 +93,26 @@ public class PlayerMovement : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         grapplingGun = GetComponentInChildren(typeof(GrapplingGun)) as GrapplingGun;
         rb.freezeRotation = true;
+
+        // Ensure frictionless physics material to prevent snagging on walls, bevels, and pillars
+        Collider col = GetComponent<Collider>();
+        if (col != null)
+        {
+            PhysicsMaterial smoothMat = new PhysicsMaterial("PlayerZeroFriction");
+            smoothMat.dynamicFriction = 0f;
+            smoothMat.staticFriction = 0f;
+            smoothMat.frictionCombine = PhysicsMaterialCombine.Minimum;
+            smoothMat.bounceCombine = PhysicsMaterialCombine.Minimum;
+            col.material = smoothMat;
+        }
+
+        // Ignore collisions between Player (Layer 10) and Target (Layer 12) so targets never physically obstruct movement
+        int playerLayer = LayerMask.NameToLayer("Player");
+        if (playerLayer != -1)
+        {
+            Physics.IgnoreLayerCollision(playerLayer, 12, true);
+        }
+        Physics.queriesHitTriggers = true;
     }
 
 
@@ -128,7 +142,7 @@ public class PlayerMovement : MonoBehaviour
 
     void Jump()
     {
-        rb.velocity = new Vector3(rb.velocity.x, 0, rb.velocity.z);
+        rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
         rb.AddForce(transform.up * jumpForce, ForceMode.Impulse);
 
         if (OnSlope() && slide.sliding)
@@ -152,9 +166,9 @@ public class PlayerMovement : MonoBehaviour
     void ControlDrag()
     {
         if (isGrounded)
-            rb.drag = groundDrag;
+            rb.linearDamping = groundDrag;
         else
-            rb.drag = airDrag;
+            rb.linearDamping = airDrag;
     }
 
     private void FixedUpdate()
@@ -169,7 +183,7 @@ public class PlayerMovement : MonoBehaviour
         }
         else if (isGrounded && OnSlope())
         {
-            rb.AddForce(GetSlopeMoveDirection(slopeMoveDirection) * moveSpeed * movementMultiplier, ForceMode.Acceleration);
+            rb.AddForce(GetSlopeMoveDirection(moveDirection) * moveSpeed * movementMultiplier, ForceMode.Acceleration);
         }
         else if (wallrun.wallrunning)
         {

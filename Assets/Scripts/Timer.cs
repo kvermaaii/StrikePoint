@@ -16,61 +16,81 @@ public class Timer : MonoBehaviour
 
     [SerializeField]
     TextMeshProUGUI TimerText;
-    //[SerializeField]
-    //TextMeshProUGUI GameEndedText;
 
     private float startTime;
     public bool started = false;
     public float CurrentTime;
 
-
-    // Start is called before the first frame update
-    void Start()
+    public GameObject StartWall
     {
-        //GameEndedText.enabled = false;
+        get => startwall;
+        set => startwall = value;
     }
 
-    // Update is called once per frame
+    public GameObject EndWall
+    {
+        get => endwall;
+        set => endwall = value;
+    }
+
+    void Start()
+    {
+    }
+
     void Update()
     {
-        Ray raystart = new Ray(new Vector3(startwall.transform.position.x, startwall.transform.position.y+1.0f, startwall.transform.position.z), startwall.transform.right);
-        Ray rayend = new Ray(new Vector3(endwall.transform.position.x-6.0f, endwall.transform.position.y+1.5f, endwall.transform.position.z + 3.0f), endwall.transform.right);
-        Debug.DrawRay(raystart.origin, raystart.direction * distance);
-        Debug.DrawRay(rayend.origin, rayend.direction * distance);
         updateTimer();
-        RaycastHit hitInfoStart; // store collision info
-        RaycastHit hitInfoEnd; // store collision info
-        if (Physics.Raycast(raystart, out hitInfoStart, distance))
+
+        // 1. Check startwall trigger ray
+        if (startwall != null && !started)
         {
-            if (hitInfoStart.collider.gameObject.CompareTag("Player") && !started)
+            Ray raystart = new Ray(new Vector3(startwall.transform.position.x, startwall.transform.position.y + 1.0f, startwall.transform.position.z), startwall.transform.right);
+            Debug.DrawRay(raystart.origin, raystart.direction * distance);
+
+            RaycastHit hitInfoStart;
+            if (Physics.Raycast(raystart, out hitInfoStart, distance))
             {
-                started = true;
-                startTime = Time.time;
+                if (hitInfoStart.collider.gameObject.CompareTag("Player"))
+                {
+                    started = true;
+                    startTime = Time.time;
+                }
             }
         }
 
-        if (Physics.Raycast(rayend, out hitInfoEnd, distance))
+        // 2. Check endwall trigger ray
+        if (endwall != null && started)
         {
-            
-            if (hitInfoEnd.collider.gameObject.CompareTag("Player") && started)
+            Ray rayend = new Ray(new Vector3(endwall.transform.position.x - 6.0f, endwall.transform.position.y + 1.5f, endwall.transform.position.z + 3.0f), endwall.transform.right);
+            Debug.DrawRay(rayend.origin, rayend.direction * distance);
+
+            RaycastHit hitInfoEnd;
+            if (Physics.Raycast(rayend, out hitInfoEnd, distance))
             {
-                //GameEndedText.enabled = true;
-                started = false;
-                GameManager.Instance.GameFinished(CurrentTime);
+                if (hitInfoEnd.collider.gameObject.CompareTag("Player"))
+                {
+                    TriggerFinish();
+                }
             }
         }
+    }
 
+    /// <summary>
+    /// Called when the player crosses either the physical Finish Gate trigger
+    /// or the raycast finish wall. Stops the timer and records score.
+    /// </summary>
+    public void TriggerFinish()
+    {
         if (started)
         {
-            //float t = Time.time - startTime;
-            //string minutes = ((int)t / 60).ToString();
-            //string seconds = (t % 60).ToString("f0");
-
-            //TimerText.text = minutes + ":" + seconds;
-            //GameEndedText.enabled = false;
+            started = false;
+            GameManager.Instance.GameFinished(CurrentTime);
         }
-
-
+        else if (!GameManager.gameFinished)
+        {
+            float recordedTime = CurrentTime > 0.05f ? CurrentTime : GameManager.Instance.currentTime;
+            GameManager.Instance.GameFinished(recordedTime);
+        }
     }
 
     void updateTimer()
@@ -79,7 +99,10 @@ public class Timer : MonoBehaviour
         {
             CurrentTime += Time.deltaTime;
             TimeSpan timeSpan = TimeSpan.FromSeconds(CurrentTime);
-            TimerText.text = string.Format("{0:D2}:{1:D2}:{2:D2}", timeSpan.Minutes, timeSpan.Seconds, timeSpan.Milliseconds);//currentTime.ToString("0.00");
+            if (TimerText != null)
+            {
+                TimerText.text = string.Format("{0:D2}:{1:D2}:{2:D2}", timeSpan.Minutes, timeSpan.Seconds, timeSpan.Milliseconds / 10);
+            }
         }
     }
 }

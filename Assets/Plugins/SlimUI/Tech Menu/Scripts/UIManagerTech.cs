@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -256,7 +256,7 @@ public class UIManagerTech : MonoBehaviour
 		switch (toggle.name)
         {
 			case "BeginnerToggle":
-				newSceneName = "KolaySeviyeSahne";
+				newSceneName = "EasyLevelScene";
 				break;
 			case "MediumToggle":
 				newSceneName = "MidLevelScene";
