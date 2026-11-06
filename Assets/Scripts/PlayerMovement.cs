@@ -137,7 +137,7 @@ public class PlayerMovement : MonoBehaviour
         ControlDrag();
         ControlSpeed();
         
-        if (Input.GetKeyDown(jumpKey))
+        if (GameInput.GetKeyDown(jumpKey))
         {
             TryJump();
         }
@@ -147,8 +147,8 @@ public class PlayerMovement : MonoBehaviour
 
     void MyInput()
     {
-        horizontalMovement = Input.GetAxis("Horizontal");
-        verticalMovement = Input.GetAxis("Vertical");
+        horizontalMovement = GameInput.GetAxis("Horizontal");
+        verticalMovement = GameInput.GetAxis("Vertical");
 
         moveDirection = orientation.forward * verticalMovement + orientation.right * horizontalMovement;
     }
@@ -190,7 +190,7 @@ public class PlayerMovement : MonoBehaviour
 
     void ControlSpeed()
     {
-        if (Input.GetKey(sprintKey) && isGrounded)
+        if (GameInput.GetKey(sprintKey) && isGrounded)
         {
             moveSpeed = Mathf.Lerp(moveSpeed, sprintSpeed, acceleration * Time.deltaTime);
         }

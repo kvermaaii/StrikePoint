@@ -96,14 +96,14 @@ public class Sliding : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        horizontalInput = Input.GetAxisRaw("Horizontal");
-        verticalInput = Input.GetAxisRaw("Vertical");
+        horizontalInput = GameInput.GetAxisRaw("Horizontal");
+        verticalInput = GameInput.GetAxisRaw("Vertical");
         isGrounded = Physics.CheckSphere(groundCheck.position, groundDistance, groundMask);
 
-        if (Input.GetKeyDown(slideKey) && (horizontalInput != 0 || verticalInput != 0) && isGrounded)
+        if (GameInput.GetKeyDown(slideKey) && (horizontalInput != 0 || verticalInput != 0) && isGrounded)
             startSlide();
 
-        if (Input.GetKeyUp(slideKey) && (sliding))
+        if (GameInput.GetKeyUp(slideKey) && (sliding))
             stopSlide();
               
     }

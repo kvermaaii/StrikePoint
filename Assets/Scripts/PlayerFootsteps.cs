@@ -26,8 +26,8 @@ public class PlayerFootsteps : MonoBehaviour
 
     private void Update()
     {
-        float horizontal = Input.GetAxis("Horizontal");
-        float vertical = Input.GetAxis("Vertical");
+        float horizontal = GameInput.GetAxis("Horizontal");
+        float vertical = GameInput.GetAxis("Vertical");
 
         isMoving = (horizontal != 0f || vertical != 0f);
 

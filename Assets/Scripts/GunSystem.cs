@@ -46,6 +46,9 @@ public class GunSystem : MonoBehaviour
     public ParticleSystem muzzleFlash;
     public ParticleSystem cartridgeEjection;
     public Camera fpsCam;
+    [Tooltip("If set (VR), shots are aimed from this transform instead of the camera, e.g. the muzzle.")]
+    public Transform aimOverride;
+    Transform AimTransform => aimOverride != null ? aimOverride : fpsCam.transform;
     public RaycastHit rayHit;
     public LayerMask whatIsEnemy;
 
@@ -99,7 +102,7 @@ public class GunSystem : MonoBehaviour
         MyInput();
 
         // Switch firing mode with key
-        if (Input.GetKeyDown(switchModeKey))
+        if (GameInput.GetKeyDown(switchModeKey))
         {
             CycleFireMode();
         }
@@ -153,15 +156,15 @@ public class GunSystem : MonoBehaviour
     {
         if (currentFireMode == FireMode.FullAuto)
         {
-            shooting = Input.GetKey(KeyCode.Mouse0);
+            shooting = GameInput.GetKey(KeyCode.Mouse0);
         }
         else
         {
-            shooting = Input.GetKeyDown(KeyCode.Mouse0);
+            shooting = GameInput.GetKeyDown(KeyCode.Mouse0);
         }
 
         // Reload command
-        if (Input.GetKeyDown(KeyCode.R) && bulletsLeft < magazineSize && !reloading)
+        if (GameInput.GetKeyDown(KeyCode.R) && bulletsLeft < magazineSize && !reloading)
         {
             Reload();
         }
@@ -195,10 +198,10 @@ public class GunSystem : MonoBehaviour
         float x = Random.Range(-spread, spread);
         float y = Random.Range(-spread, spread);
         float z = Random.Range(-spread, spread);
-        Vector3 direction = fpsCam.transform.forward + new Vector3(x, y, z);
+        Vector3 direction = AimTransform.forward + new Vector3(x, y, z);
 
         // Hitscan raycast (QueryTriggerInteraction.Collide ensures trigger targets are hit)
-        if (Physics.Raycast(fpsCam.transform.position, direction, out rayHit, range, whatIsEnemy, QueryTriggerInteraction.Collide))
+        if (Physics.Raycast(AimTransform.position, direction, out rayHit, range, whatIsEnemy, QueryTriggerInteraction.Collide))
         {
             HandleHit(rayHit);
 
@@ -214,7 +217,7 @@ public class GunSystem : MonoBehaviour
             if (BulletTrail != null && gunEnd != null)
             {
                 TrailRenderer trail = Instantiate(BulletTrail, gunEnd.position, Quaternion.identity);
-                StartCoroutine(SpawnTrail(trail, fpsCam.transform.position + direction * range));
+                StartCoroutine(SpawnTrail(trail, AimTransform.position + direction * range));
             }
         }
 

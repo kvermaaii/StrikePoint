@@ -78,7 +78,7 @@ public class GameManager : MonoBehaviour
         totalLevelScore = numOfTargetsHit * 50;
 
         // Toggle leaderboard view with TAB key anytime
-        if (Input.GetKeyDown(KeyCode.Tab))
+        if (GameInput.GetKeyDown(KeyCode.Tab))
         {
             showLeaderboardToggle = !showLeaderboardToggle;
         }

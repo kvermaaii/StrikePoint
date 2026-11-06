@@ -95,7 +95,7 @@ public class WallRun : MonoBehaviour
             tilt = Mathf.Lerp(tilt, camTilt, camTiltTime * Time.deltaTime);
         }
 
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (GameInput.GetKeyDown(KeyCode.Space))
         {
             if (wallLeft)
             {
