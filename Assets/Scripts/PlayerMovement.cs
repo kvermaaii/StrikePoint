@@ -39,6 +39,19 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] float airDrag = 2f;
     [SerializeField] float gravityMultiplier;
 
+    [Header("Grapple Momentum")]
+    [Tooltip("Rigidbody drag while the rope is attached and airborne. The normal airDrag (2) removes ~13% of your speed every 0.07s, which kills a swing.")]
+    public float grappleAirDrag = 0.6f;
+    [Tooltip("After the rope is released (or jumped off) keep the low drag for this long, so the release arc keeps its swing speed.")]
+    public float grappleMomentumTime = 0.5f;
+    [Tooltip("For this long after the rope was last attached, touching the ground uses landingDrag instead of groundDrag, so a landing-jump keeps horizontal speed.")]
+    public float landingCarryTime = 0.2f;
+    public float landingDrag = 2f;
+    [Tooltip("Pressing jump while the rope is attached releases it and jumps, keeping the swing's horizontal speed.")]
+    public bool jumpFromGrapple = true;
+
+    float lastGrappleTime = -999f;
+
     float horizontalMovement;
     float verticalMovement;
 
@@ -124,9 +137,9 @@ public class PlayerMovement : MonoBehaviour
         ControlDrag();
         ControlSpeed();
         
-        if (Input.GetKeyDown(jumpKey) && isGrounded)
+        if (Input.GetKeyDown(jumpKey))
         {
-            Jump();
+            TryJump();
         }
 
         slopeMoveDirection = Vector3.ProjectOnPlane(moveDirection, slopeHit.normal);
@@ -138,6 +151,30 @@ public class PlayerMovement : MonoBehaviour
         verticalMovement = Input.GetAxis("Vertical");
 
         moveDirection = orientation.forward * verticalMovement + orientation.right * horizontalMovement;
+    }
+
+    /// <summary>Jump from the ground, or - while swinging - release the rope and jump off it.</summary>
+    public void TryJump()
+    {
+        if (isGrounded)
+        {
+            Jump();
+        }
+        else if (jumpFromGrapple && grapplingGun != null && grapplingGun.IsGrappling())
+        {
+            SwingJump();
+        }
+    }
+
+    // Jump off the rope mid-swing. Unlike Jump() this keeps any upward speed the swing has, and the horizontal speed is untouched.
+    void SwingJump()
+    {
+        grapplingGun.StopGrapple();
+        lastGrappleTime = Time.time;                       // keep the low-drag window running after the release
+        Vector3 v = rb.linearVelocity;
+        v.y = Mathf.Max(v.y, 0f);                          // drop downward speed (like a ground jump) but never cut upward speed
+        rb.linearVelocity = v;
+        rb.AddForce(transform.up * jumpForce, ForceMode.Impulse);
     }
 
     void Jump()
@@ -165,10 +202,14 @@ public class PlayerMovement : MonoBehaviour
 
     void ControlDrag()
     {
+        bool grappling = grapplingGun != null && grapplingGun.IsGrappling();
+        if (grappling) lastGrappleTime = Time.time;
+        float sinceGrapple = Time.time - lastGrappleTime;
+
         if (isGrounded)
-            rb.linearDamping = groundDrag;
+            rb.linearDamping = sinceGrapple < landingCarryTime ? landingDrag : groundDrag;
         else
-            rb.linearDamping = airDrag;
+            rb.linearDamping = (grappling || sinceGrapple < grappleMomentumTime) ? grappleAirDrag : airDrag;
     }
 
     private void FixedUpdate()
@@ -194,6 +235,14 @@ public class PlayerMovement : MonoBehaviour
             rb.AddForce(moveDirection.normalized * moveSpeed * movementMultiplier * airMultiplier, ForceMode.Acceleration);
             rb.AddForce(-orientation.up * gravityMultiplier * movementMultiplier * airMultiplier, ForceMode.Acceleration);
         }
+    }
+
+    // Checkpoint after the 90-degree corner wall run in section A of the Mid level (first flat floor of corridor B).
+    // The position comes from the "Checkpoint_Mid_AfterWallRun" marker so it can be moved in the editor; the fallback matches its default.
+    private Vector3 MidWallRunCheckpoint()
+    {
+        GameObject marker = GameObject.Find("Checkpoint_Mid_AfterWallRun");
+        return marker != null ? marker.transform.position : new Vector3(-124.2f, 13.3f, 116.0f);
     }
 
     private void OnTriggerEnter(Collider collider)
@@ -257,10 +306,24 @@ public class PlayerMovement : MonoBehaviour
             grapplingGun.StopGrapple();
             rb.transform.position = new Vector3(-17.43f, 4.4f, 96.24f);
         }
-        if (collider.gameObject.name == "PlaneMid3")
+        // PlaneMid2c is the off-route strip north of the wall-run; it is before the new checkpoint, so it uses checkpoint 1 like PlaneMid2.
+        if (collider.gameObject.name == "PlaneMid2c")
         {
             grapplingGun.StopGrapple();
             rb.transform.position = new Vector3(-17.43f, 4.4f, 96.24f);
+        }
+        // Checkpoint after the 90-degree corner wall run in section A, on the first flat floor of corridor B.
+        // PlaneMid2b covers corridor B's south end (z >= 111.5); PlaneMid3 covers the rest of B, the waterfall room and the pad
+        // gallery, all of which are reached after this checkpoint. Falls before it (PlaneMid2, over the corner wall run) still use checkpoint 1.
+        if (collider.gameObject.name == "PlaneMid2b")
+        {
+            grapplingGun.StopGrapple();
+            rb.transform.position = MidWallRunCheckpoint();
+        }
+        if (collider.gameObject.name == "PlaneMid3")
+        {
+            grapplingGun.StopGrapple();
+            rb.transform.position = MidWallRunCheckpoint();
         }
         if (collider.gameObject.name == "PlaneMid4")
         {

@@ -127,12 +127,9 @@ public class AutoLevelPopulator : MonoBehaviour
         SpawnMovingTarget(root, new Vector3(-15.2f, 14.5f, 218f), Vector3.up, 3.0f, 2.5f);
         SpawnExplosiveBarrel(root, new Vector3(-12f, 11.5f, 212f));
 
-        // --- 5. SECTOR 2 & 3 (Extended Course) ---
+        // --- 5. SECTOR 2 (course now ends at the finish gate on Platform 13, x ~108, z ~171) ---
         SpawnStaticTarget(root, new Vector3(103.6f, 13.5f, 180f), "Mid_Sec2_Target1");
         SpawnMovingTarget(root, new Vector3(110f, 14.0f, 195f), Vector3.right, 4.0f, 2.0f);
-        SpawnStaticTarget(root, new Vector3(215.8f, 8.5f, 212f), "Mid_Sec3_Target1");
-        SpawnExplosiveBarrel(root, new Vector3(218f, 6.8f, 206f));
-        SpawnStaticTarget(root, new Vector3(225f, 9.0f, 225f), "Mid_Sec3_Target2");
     }
 
     private static void PopulateHardLevel(GameObject root)
